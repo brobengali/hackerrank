@@ -12,32 +12,107 @@ Read [`problem_statement.md`](./problem_statement.md) for the complete challenge
 
 ---
 
-## Quick Start
+## Solution Architecture
 
-Clone the repository and move into the project directory:
+This system implements an end-to-end, multi-stage deletion audit agent that operates fully offline with zero API cost and strict deterministic guarantees:
+
+1. **Typed Data Loading & Schema Validation** ([`code/core/loader.py`](./code/core/loader.py), [`code/core/schema_validator.py`](./code/core/schema_validator.py)): Validates schemas, preserves provenance, and prevents silent record drops.
+2. **Dynamic Policy Engine** ([`code/core/policy_engine.py`](./code/core/policy_engine.py)): Parses `dataset/deletion_rules.csv` at runtime with full semantics for `DELETE`, `REDACT`, `ANONYMIZE`, `RETAIN`, and permitted `ACCOUNT_TOMBSTONE` references.
+3. **Collision-Aware Identity Resolution** ([`code/core/identity.py`](./code/core/identity.py)): Reconstructs current and multi-hop historical identifiers (`user_audit_log.csv`) with collision protection.
+4. **Point-in-Time Evidence Store** ([`code/core/evidence_store.py`](./code/core/evidence_store.py)): Indexes SQLite-compatible SQL snapshots, JSON records, system logs, text handovers, and PDF exports with strict temporal cutoff enforcement at `audit_at`.
+5. **Cross-System Investigation** ([`code/core/investigator.py`](./code/core/investigator.py)): Uncovers prohibited residual personal data and exposed PII across all enterprise replicas and storage systems.
+6. **Resurrection Risk Engine** ([`code/core/resurrection.py`](./code/core/resurrection.py)): Identifies active data flows (`integration_service`) and scheduled backup restore paths capable of recreating deleted data.
+7. **Dependency-Aware Remediation Planner** ([`code/core/remediation_planner.py`](./code/core/remediation_planner.py)): Applies Kahn's topological sort with cycle detection, guaranteeing resurrection controls (`DISABLE_DATA_FLOW`, `BLOCK_RESTORE`) precede dependent record cleanups.
+8. **Deterministic Verification Engine & Safety Gate** ([`code/core/verification_engine.py`](./code/core/verification_engine.py)): Computes final status (`COMPLETE`, `INCOMPLETE`, `NOT_APPLICABLE`) and enforces 8 Python invariants that prevent false `COMPLETE` decisions.
+9. **Bounded AI Investigator** ([`code/core/ai_investigator.py`](./code/core/ai_investigator.py)): Optional tool-calling loop defended against prompt injection with inert XML wrapping and fallback to deterministic execution.
+
+---
+
+## Installation & Environment Setup
+
+The solution requires **Python 3.10+** (tested on Python 3.12). The deterministic audit engine and evaluation framework rely solely on standard library modules (`csv`, `json`, `sqlite3`, `pathlib`, `re`, `hashlib`, `unittest`, `argparse`).
+
+To set up your environment:
 
 ```bash
+# Clone the repository
 git clone https://github.com/interviewstreet/hackerrank-orchestrate-october26.git
 cd hackerrank-orchestrate-october26
+
+# Ensure PYTHONPATH includes the repository root
+export PYTHONPATH=.       # macOS / Linux
+$env:PYTHONPATH="."       # Windows PowerShell
+set PYTHONPATH=.          # Windows CMD
 ```
 
-Start your AI coding tool from the **repository root** so it automatically reads [`AGENTS.md`](./AGENTS.md) and logs your session turns to `log.txt` in the root directory.
+---
 
-Build your solution in `code/main.py`, or use another language and document its setup and run command clearly in your README.
+## Execution Commands
 
-Your solution must:
+### 1. Full Challenge Dataset Audit (518 Cases)
 
-- Read the input files from `dataset/`
-- Generate one prediction row for every request in `dataset/deletion_requests.csv`
-- Write the final predictions to `output.csv` in the repository root
-
-Run the starter Python entry point with:
+Runs the complete 13-stage pipeline across all 518 evaluation requests, producing root `output.csv`:
 
 ```bash
 python3 code/main.py
 ```
 
-The blank template at `dataset/output.csv` is provided as a reference. Your final generated file for submission must be the root-level `output.csv`.
+On Windows:
+```powershell
+python code\main.py
+```
+
+Options:
+- `--dataset <path>`: Directory containing dataset files (default: `dataset`).
+- `--output <path>`: Destination path for prediction output (default: `output.csv`).
+- `--eval-samples`: Run on `dataset/sample_deletion_requests.csv` and compute benchmark metrics against `dataset/sample_output.csv`.
+- `--use-ai`: Enable optional AI-assisted investigation tool loop (requires `GEMINI_API_KEY`).
+
+### 2. Sample Evaluation Benchmark Mode
+
+Evaluates the agent on the 32 public labeled cases and prints comprehensive accuracy metrics:
+
+```bash
+python3 code/main.py --eval-samples
+```
+
+Or run the dedicated evaluation CLI:
+
+```bash
+python3 -m code.evaluation.main
+```
+
+---
+
+## Running the Automated Test Suite
+
+The repository contains **86 comprehensive automated tests** across 9 test modules covering all subsystems and generalization guarantees:
+
+### Run All Tests:
+
+```bash
+python3 -m unittest discover -s tests -p "test_*.py"
+```
+
+### Run Specific Test Modules:
+
+| Test Module | Coverage |
+|---|---|
+| `tests/test_data_layer.py` | Schema validation, type checking, malformed input handling |
+| `tests/test_policy_engine.py` | Dynamic rule parsing, tombstones, PII inspection |
+| `tests/test_identity.py` | Historical identity resolution, collision detection |
+| `tests/test_investigation.py` | Cross-system evidence querying, temporal cutoff enforcement |
+| `tests/test_resurrection.py` | Data flow and restore risk detection |
+| `tests/test_remediation_planner.py` | Kahn topological sort, cycle detection, flow-first ordering |
+| `tests/test_verification_engine.py` | 8 safety gate invariants, override enforcement |
+| `tests/test_ai_investigator.py` | Prompt injection defense, schema validation, loop bounds |
+| `tests/test_generalization.py` | 9 generalization dimensions (UUIDs, multi-hop history, dynamic policies, fault isolation) |
+
+To run the generalization tests individually:
+
+```bash
+python3 -m unittest tests/test_generalization.py
+```
 
 
 ## Dataset
