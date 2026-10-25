@@ -14,13 +14,66 @@ Read [`problem_statement.md`](./problem_statement.md) for the complete challenge
 
 ## Solution Architecture
 
+```mermaid
+flowchart TB
+    subgraph Inputs["dataset/"]
+        DR["deletion_requests.csv<br/><i>(input requests)</i>"]
+        DRULES["deletion_rules.csv<br/><i>(policy rules)</i>"]
+        UID["user_identities.csv<br/><i>(user identities)</i>"]
+        SA["system_activity.csv<br/><i>(system activity records)</i>"]
+        UAL["user_audit_log.csv<br/><i>(audit/deletion logs)</i>"]
+        EF["evidence_files.csv<br/><i>(manifest of evidence files)</i>"]
+        EV["evidence/<br/><i>(PDFs, images, exports, etc.)</i>"]
+    end
+
+    subgraph ModelLayer["Model layer – interprets (optional)"]
+        ER["Evidence retrieval<br/><i>(select relevant files & content)</i>"]
+        LLM["LLM interpretation<br/><i>(extract facts from unstructured data)</i>"]
+        PF["Proposed findings<br/><i>(with evidence references)</i>"]
+        ER --> LLM --> PF
+    end
+
+    subgraph Core["Deterministic core – decides"]
+        DL["Data loader<br/><i>(schema validation, data normalization, audit_at cutoff)</i>"]
+        RA["Request authorization / intent check<br/><i>(valid request, scope, requester)</i>"]
+        IR["Identity resolver<br/><i>(current + historical identifiers, hashes, aliases)</i>"]
+        CSI["Cross-system investigation & resurrection risk detection<br/><i>(deletion, sync, import, restore events)</i>"]
+        PE["Policy evaluator<br/><i>(apply deletion_rules)</i>"]
+        DE["Decision engine<br/><i>(evaluate requirements & determine status)</i>"]
+        RP["Remediation planner<br/><i>(ordered steps or verification checks)</i>"]
+
+        DL --> RA --> IR --> CSI --> PE --> DE --> RP
+    end
+
+    subgraph Verifier["Independent verifier – validates"]
+        OSC["Output schema check<br/><i>(required fields & types)</i>"]
+        PCC["Policy compliance check<br/><i>(all rules satisfied)</i>"]
+        ESC["Evidence sufficiency check<br/><i>(no missing requirements)</i>"]
+        FV["Final validation<br/><i>(approve or flag)</i>"]
+
+        OSC --> PCC --> ESC --> FV
+    end
+
+    subgraph Outputs["Outputs"]
+        OUT["output.csv<br/><i>(one row per request)</i><br/>• status<br/>• exposing records<br/>• active processes<br/>• remediation steps<br/>• verification checks<br/>• retained records"]
+        DT["decision_traces.jsonl<br/><i>(detailed audit trace)</i><br/>• evidence references<br/>• timeline events<br/>• policy rules applied<br/>• reasoning and findings"]
+    end
+
+    Inputs --> DL
+    Inputs -.->|"Relevant evidence only<br/>(read-only, bounded tools)"| ER
+    PF -.->|"Validated facts only<br/>(no final decisions)"| Core
+    RP --> Verifier
+    Verifier --> Outputs
+    RP --> Outputs
+```
+
 This system implements an end-to-end, multi-stage deletion audit agent that operates fully offline with zero API cost and strict deterministic guarantees:
 
-1. **Typed Data Loading & Schema Validation** ([`code/core/loader.py`](./code/core/loader.py), [`code/core/schema_validator.py`](./code/core/schema_validator.py)): Validates schemas, preserves provenance, and prevents silent record drops.
-2. **Dynamic Policy Engine** ([`code/core/policy_engine.py`](./code/core/policy_engine.py)): Parses `dataset/deletion_rules.csv` at runtime with full semantics for `DELETE`, `REDACT`, `ANONYMIZE`, `RETAIN`, and permitted `ACCOUNT_TOMBSTONE` references.
-3. **Collision-Aware Identity Resolution** ([`code/core/identity.py`](./code/core/identity.py)): Reconstructs current and multi-hop historical identifiers (`user_audit_log.csv`) with collision protection.
-4. **Point-in-Time Evidence Store** ([`code/core/evidence_store.py`](./code/core/evidence_store.py)): Indexes SQLite-compatible SQL snapshots, JSON records, system logs, text handovers, and PDF exports with strict temporal cutoff enforcement at `audit_at`.
-5. **Cross-System Investigation** ([`code/core/investigator.py`](./code/core/investigator.py)): Uncovers prohibited residual personal data and exposed PII across all enterprise replicas and storage systems.
+1. **Typed Data Loading & Schema Validation** ([`code/core/loader.py`](./code/core/loader.py), [`code/core/schema_validator.py`](./code/core/schema_validator.py)): Validates schemas, preserves provenance, and enforces strict temporal cutoffs at `audit_at`.
+2. **Request Authorization & Intent Classifier** ([`code/core/intent_classifier.py`](./code/core/intent_classifier.py)): Determines if `request_text` authorizes deletion, safely short-circuiting non-deletion inquiries to `NOT_APPLICABLE` with `steps_json=[]`.
+3. **Dynamic Policy Engine** ([`code/core/policy_engine.py`](./code/core/policy_engine.py)): Parses `dataset/deletion_rules.csv` at runtime with full semantics for `DELETE`, `REDACT`, `ANONYMIZE`, `RETAIN`, and permitted `ACCOUNT_TOMBSTONE` references.
+4. **Collision-Aware Identity Resolution** ([`code/core/identity.py`](./code/core/identity.py)): Reconstructs current and multi-hop historical identifiers (`user_audit_log.csv`) with collision protection.
+5. **Point-in-Time Evidence Store & Cross-System Investigation** ([`code/core/evidence_store.py`](./code/core/evidence_store.py), [`code/core/investigator.py`](./code/core/investigator.py)): Indexes SQLite SQL snapshots, JSON records, system logs, text handovers, and PDF exports with temporal cutoff enforcement.
 6. **Resurrection Risk Engine** ([`code/core/resurrection.py`](./code/core/resurrection.py)): Identifies active data flows (`integration_service`) and scheduled backup restore paths capable of recreating deleted data.
 7. **Dependency-Aware Remediation Planner** ([`code/core/remediation_planner.py`](./code/core/remediation_planner.py)): Applies Kahn's topological sort with cycle detection, guaranteeing resurrection controls (`DISABLE_DATA_FLOW`, `BLOCK_RESTORE`) precede dependent record cleanups.
 8. **Deterministic Verification Engine & Safety Gate** ([`code/core/verification_engine.py`](./code/core/verification_engine.py)): Computes final status (`COMPLETE`, `INCOMPLETE`, `NOT_APPLICABLE`) and enforces 8 Python invariants that prevent false `COMPLETE` decisions.
