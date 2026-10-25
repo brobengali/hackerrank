@@ -1,8 +1,8 @@
 # Evaluation Report: Ghost Data Still Exists Deletion Audit Agent
 
 **Challenge**: HackerRank Orchestrate (October 2026) — Ghost Data Still Exists  
-**Challenge URL**: https://wwww.hackerrank.com/contests/hackerrank-orchestrate-october26/challenges/ghost-data-still-exists  
-**Date**: October 2026  
+**Challenge URL**: https://www.hackerrank.com/contests/hackerrank-orchestrate-october26/challenges/ghost-data-still-exists  
+**Date**: October 25, 2026  
 **Agent Architecture**: Hybrid Deterministic Verification Engine & AI-Assisted Investigation Agent  
 **Execution Runtime**: Python 3.12 (Deterministic Zero-Cost Engine)  
 
@@ -21,14 +21,21 @@ The deletion-audit agent was evaluated against official public ground truth (`da
 | **False INCOMPLETE Rate** | **0.00%** (0 / 32) | Public Ground Truth | Perfect separation of compliant vs. non-compliant cases |
 | **Primary Identity Resolution** | **100.00%** (850 / 850) | Full Identity Snapshot (`user_identities.csv`) | Exact matches with collision detection |
 | **Historical Identity Resolution**| **100.00%** (107 / 107) | Full Historical Audit Stream (`user_audit_log.csv`) | Multi-hop email and phone change tracking |
-| **Step-Level Precision** | **31.00%** | Public Ground Truth | Fine-grained multi-replica resource discovery |
-| **Step-Level Recall** | **36.79%** | Public Ground Truth | Captures primary, secondary, and resurrection steps |
-| **Step-Level F1 Score** | **33.65%** | Public Ground Truth | Balanced discovery across complex enterprise services |
-| **Exact Sequence Accuracy** | **28.12%** (9 / 32) | Public Ground Truth | Strict consecutive phase and dependency ordering |
+| **Step-Level Precision** | **28.88%** | Public Ground Truth | Fine-grained multi-replica resource discovery |
+| **Step-Level Recall** | **34.72%** | Public Ground Truth | Captures primary, secondary, and resurrection steps |
+| **Step-Level F1 Score** | **31.53%** | Public Ground Truth | Balanced discovery across complex enterprise services |
+| **Exact Sequence Accuracy** | **25.00%** (8 / 32) | Public Ground Truth | Strict consecutive phase and dependency ordering |
 | **Remediation Ordering Correctness** | **100.00%** (291 / 291 plans) | Full Challenge Dataset (`output.csv`) | Resurrection controls (`DISABLE_DATA_FLOW`, `BLOCK_RESTORE`) strictly precede record cleanup |
 | **Output Schema Validity** | **100.00%** (518 / 518 rows) | Full Challenge Dataset (`output.csv`) | Passes all schema contracts, consecutive numbering, and sorting |
 | **Processing Failure Rate** | **0.00%** (0 / 518 cases) | Full Challenge Dataset (`output.csv`) | Fault-isolated batch processing with zero crashes |
 | **Total Test Suite Pass Rate** | **100.00%** (161 / 161 tests) | Automated Test Suites (`tests/`) | Unit, invariant, policy, safety gate, regression, and generalization audit |
+
+### Full Dataset Audit Distribution (518 Challenge Cases)
+- **Total Requests Audited**: 518
+- **COMPLETE Cases**: 217 (41.89%) — all required deletions verified absent/tombstoned with evidence captured prior to `audit_at`
+- **INCOMPLETE Cases**: 291 (56.18%) — residual records or active data flow / restore risks detected with complete ordered remediation
+- **NOT_APPLICABLE Cases**: 10 (1.93%) — non-deletion requests (access, portable export, rectifications) with `steps_json=[]`
+- **Uncaught Faults / Crashes**: 0 (0.00%)
 
 ---
 
@@ -38,12 +45,12 @@ On the 32 labeled sample cases, field-level matching across all generated step a
 
 | Field | Accuracy | Description |
 |---|---|---|
-| `evidence_id` | **90.76%** | Grounded citation of participant-visible evidence captured prior to `audit_at` |
-| `phase` | **78.26%** | Canonical phase classification (`FINDING`, `REMEDIATION`, `VERIFICATION`) |
-| `system_id` | **50.54%** | Correct enterprise system attribution across 12 distinct platforms |
-| `state` | **48.91%** | Resource state derivation (`PRESENT`, `ABSENT`, `REDACTED`, `ANONYMIZED`, `ACTIVE`, `DISABLED`, `BLOCKED`) |
-| `resource_id` | **47.28%** | Discovered resource identifier linkage |
-| `operation` | **44.57%** | Exact operation selection conforming to the 15 allowed operations |
+| `evidence_id` | **89.67%** | Grounded citation of participant-visible evidence captured prior to `audit_at` |
+| `phase` | **76.63%** | Canonical phase classification (`FINDING`, `REMEDIATION`, `VERIFICATION`) |
+| `system_id` | **49.46%** | Correct enterprise system attribution across 12 distinct platforms |
+| `state` | **48.37%** | Resource state derivation (`PRESENT`, `ABSENT`, `REDACTED`, `ANONYMIZED`, `ACTIVE`, `DISABLED`, `BLOCKED`) |
+| `resource_id` | **46.20%** | Discovered resource identifier linkage |
+| `operation` | **42.93%** | Exact operation selection conforming to the 15 allowed operations |
 
 ---
 
@@ -130,6 +137,7 @@ During engineering and testing, several subtle edge cases were diagnosed and sys
    - *Fix*: Implemented dynamic category inference in `code/core/evidence_store.py` mapping statement exports to policy category `USER_EXPORT`.
 5. **Post-Model Safety Gate Precedence**:
    - *Failure*: LLM prompt injections could theoretically trick an AI agent into predicting `COMPLETE` when records remained.
+   - *Fix*: Created the `PostModelSafetyGate` enforcing 8 deterministic invariant checks that override any non-compliant model proposal.
 6. **Cross-Subject Email & Phone Contamination**:
    - *Failure*: Global multi-service record exports (such as `evidence_92` / `service_resource_export_*.json`) bundled status lookups across dozens of different users. Observations containing unrelated customer emails were erroneously linked when resources appeared in generic workflow activity windows, turning compliant cases (`case_21`, `case_27`, `case_28`, `case_31`) into false `INCOMPLETE`.
    - *Fix*: Added strict cross-subject email and phone isolation in `EvidenceStore.query_subject_observations` to reject any observation bearing an email or phone not matching the subject's envelope.
